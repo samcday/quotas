@@ -167,41 +167,17 @@ impl MimoProvider {
     ///   2. tokenPlan/usage on platform.xiaomimimo.com (monthUsage format)
     ///   3. /user/balance on token-plan-sgp (legacy balance format)
     ///   4. /user/balance on api.xiaomimimo.com (PAYG balance format)
+    ///
+    /// A 401/403 from the platform usage endpoint is skipped (it is
+    /// cookie-only), so a valid bearer key falls through to
+    /// `detect_base_url` and gets the "needs a platform cookie" card
+    /// instead of a false "Authentication failed".
     async fn fetch_bearer(&self, key: &str) -> Result<ProviderResult> {
         // 1. Try tokenPlan/usage endpoints with bearer auth.
         for url in &[TOKEN_PLAN_SGP_USAGE, PLATFORM_USAGE] {
             if let Some((status, body)) = self.try_json_bearer(key, url).await? {
-                if status == 401 || status == 403 {
-                    // Auth error — return immediately.
-                    let msg = body
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Authentication failed");
-                    return Ok(ProviderResult {
-                        kind: ProviderKind::Mimo,
-                        status: ProviderStatus::Unavailable {
-                            info: crate::providers::UnavailableInfo {
-                                reason: msg.to_string(),
-                                console_url: Some(DASHBOARD_URL.into()),
-                            },
-                        },
-                        fetched_at: Utc::now(),
-                        raw_response: Some(body),
-                        auth_source: None,
-                        cached_at: None,
-            instance_key: None,
-            profile_id: None,
-            card_title: None,
-                    });
-                }
-                if status < 400 {
-                    // Check code != 0 for platform-style errors.
-                    if let Some(code) = body.get("code").and_then(|v| v.as_i64()) {
-                        if code != 0 {
-                            continue; // Not a valid response, try next.
-                        }
-                    }
-                    if let Ok(quota) = parse_platform_usage(&body) {
+                match bearer_usage_decision(url, status, &body) {
+                    BearerStep::Parsed(quota) => {
                         return Ok(ProviderResult {
                             kind: ProviderKind::Mimo,
                             status: ProviderStatus::Available { quota },
@@ -209,11 +185,30 @@ impl MimoProvider {
                             raw_response: Some(body),
                             auth_source: None,
                             cached_at: None,
-            instance_key: None,
-            profile_id: None,
-            card_title: None,
+                            instance_key: None,
+                            profile_id: None,
+                            card_title: None,
                         });
                     }
+                    BearerStep::AuthFailed(reason) => {
+                        return Ok(ProviderResult {
+                            kind: ProviderKind::Mimo,
+                            status: ProviderStatus::Unavailable {
+                                info: crate::providers::UnavailableInfo {
+                                    reason,
+                                    console_url: Some(DASHBOARD_URL.into()),
+                                },
+                            },
+                            fetched_at: Utc::now(),
+                            raw_response: Some(body),
+                            auth_source: None,
+                            cached_at: None,
+                            instance_key: None,
+                            profile_id: None,
+                            card_title: None,
+                        });
+                    }
+                    BearerStep::Continue => {}
                 }
             }
         }
@@ -271,7 +266,8 @@ impl MimoProvider {
                 kind: ProviderKind::Mimo,
                 status: ProviderStatus::Unavailable {
                     info: crate::providers::UnavailableInfo {
-                        reason: "No quota API — check usage at platform.xiaomimimo.com".to_string(),
+                        reason: "Token Plan usage needs a platform cookie — see platform.xiaomimimo.com"
+                            .to_string(),
                         console_url: Some(DASHBOARD_URL.into()),
                     },
                 },
@@ -301,6 +297,51 @@ impl MimoProvider {
             }),
         }
     }
+}
+
+/// Decision for one bearer `tokenPlan/usage` response inside `fetch_bearer`.
+#[derive(Debug)]
+enum BearerStep {
+    /// The endpoint rejected this bearer key outright.
+    AuthFailed(String),
+    /// Not usable here — try the next candidate URL.
+    Continue,
+    /// Endpoint returned usable quota data.
+    Parsed(ProviderQuota),
+}
+
+/// Classify one bearer `tokenPlan/usage` response.
+///
+/// `PLATFORM_USAGE` sits behind Xiaomi account SSO and rejects *every*
+/// bearer key with 401, so a 401/403 there says nothing about the key —
+/// skip it and let the caller fall through to the balance endpoints and
+/// `detect_base_url`. Only a 401/403 from the token-plan-sgp host means
+/// the key itself is bad.
+fn bearer_usage_decision(url: &str, status: u16, body: &serde_json::Value) -> BearerStep {
+    if status == 401 || status == 403 {
+        if url == PLATFORM_USAGE {
+            // Platform usage is cookie-only; never trust a bearer 401 here.
+            return BearerStep::Continue;
+        }
+        let msg = body
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Authentication failed")
+            .to_string();
+        return BearerStep::AuthFailed(msg);
+    }
+    if status < 400 {
+        // Check code != 0 for platform-style errors.
+        if let Some(code) = body.get("code").and_then(|v| v.as_i64()) {
+            if code != 0 {
+                return BearerStep::Continue; // Not a valid response, try next.
+            }
+        }
+        if let Ok(quota) = parse_platform_usage(body) {
+            return BearerStep::Parsed(quota);
+        }
+    }
+    BearerStep::Continue
 }
 
 #[derive(Deserialize, Default)]
@@ -571,6 +612,55 @@ mod tests {
         assert_eq!(quota.windows[0].used, 265741632);
         assert_eq!(quota.windows[0].limit, 1600000000);
         assert_eq!(quota.windows[0].remaining, 1600000000 - 265741632);
+    }
+
+    /// The platform usage endpoint is behind Xiaomi account SSO and
+    /// rejects every bearer key with 401, so it must not abort the loop.
+    #[test]
+    fn bearer_platform_401_continues_to_next_url() {
+        let body = serde_json::json!({
+            "code": 401,
+            "loginUrl": "https://account.xiaomi.com/pass/serviceLogin?..."
+        });
+        let step = bearer_usage_decision(PLATFORM_USAGE, 401, &body);
+        assert!(matches!(step, BearerStep::Continue));
+    }
+
+    #[test]
+    fn bearer_sgp_401_reports_auth_failed_with_server_message() {
+        let body = serde_json::json!({ "message": "bad key" });
+        let step = bearer_usage_decision(TOKEN_PLAN_SGP_USAGE, 401, &body);
+        match step {
+            BearerStep::AuthFailed(reason) => assert_eq!(reason, "bad key"),
+            other => panic!("expected AuthFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bearer_usage_200_parses_quota_windows() {
+        let body = serde_json::json!({
+            "code": 0,
+            "message": "",
+            "data": {
+                "monthUsage": {
+                    "percent": 0.1661,
+                    "items": [{
+                        "name": "month_total_token",
+                        "used": 265741632,
+                        "limit": 1600000000,
+                        "percent": 0.1661
+                    }]
+                }
+            }
+        });
+        let step = bearer_usage_decision(TOKEN_PLAN_SGP_USAGE, 200, &body);
+        match step {
+            BearerStep::Parsed(quota) => {
+                assert_eq!(quota.windows.len(), 1);
+                assert_eq!(quota.windows[0].window_type, "month_total_token");
+            }
+            other => panic!("expected Parsed, got {other:?}"),
+        }
     }
 
     /// Probe all MiMo endpoints with a bearer API key.

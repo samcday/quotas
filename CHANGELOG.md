@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **MiMo provider re-enabled**: reads the MiMo Code CLI key from `~/.local/share/mimocode/auth.json`; bearer keys no longer show a false "Authentication failed" (the platform usage endpoint is cookie-only) — they show an honest "needs a platform cookie" card with the dashboard link; cookie auth (`~/.config/mimo/cookie`) still gives full monthly usage.
+
 ## 0.11.0 - 2026-07-31
 
 - **Multi-profile discovery** for Claude, Codex, and Grok. Autodetects `~/.claude` + `~/.claude-*`, `~/.codex` + `~/.codex-*`, and `~/.grok` + `~/.grok-*`, symlink-deduped by canonical auth path so each unique account becomes its own card. Pin, rename, or disable via `[profiles]` / `[profiles.entries."<kind>:<id>"]` in config (`canonical`, `name`, `enabled`). Cache, TUI, JSON, and statusline keep instances separate.

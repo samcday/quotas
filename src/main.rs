@@ -350,15 +350,32 @@ fn build_auth_resolver(instance: &ProviderInstance, config: &Config) -> Box<dyn 
             }
             multi_auth(resolvers)
         }
-        ProviderKind::Mimo => multi_auth(vec![
-            cookie_file_auth(&[".config/mimo/cookie", ".mimo-cookie"], "mimo-cookie"),
-            env_auth(&[
-                ("XIAOMI_MIMO_API_KEY", "xiaomi_mimo"),
-                ("XIAOMI_API_KEY", "xiaomi"),
-                ("MIMO_API_KEY", "mimo"),
-            ]),
-            key_file_auth(&[".mimo-key", ".xiaomimimo", ".mimo"], "mimo"),
-        ]),
+        ProviderKind::Mimo => {
+            let mut resolvers = vec![
+                cookie_file_auth(&[".config/mimo/cookie", ".mimo-cookie"], "mimo-cookie"),
+                env_auth(&[
+                    ("XIAOMI_MIMO_API_KEY", "xiaomi_mimo"),
+                    ("XIAOMI_API_KEY", "xiaomi"),
+                    ("MIMO_API_KEY", "mimo"),
+                ]),
+                key_file_auth(&[".mimo-key", ".xiaomimimo", ".mimo"], "mimo"),
+            ];
+            // MiMo Code CLI bearer key, stored in opencode's auth.json shape
+            // under mimocode/. Kept last so a cookie or explicit key wins.
+            let mut mimocode_paths = Vec::new();
+            if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+                mimocode_paths.push(PathBuf::from(data_home).join("mimocode/auth.json"));
+            }
+            mimocode_paths.extend(home_paths(&[
+                ".local/share/mimocode/auth.json",
+                ".config/mimocode/auth.json",
+            ]));
+            resolvers.push(Box::new(OpencodeAuthResolver::with_paths(
+                OpencodeSlot::Xiaomi,
+                mimocode_paths,
+            )));
+            multi_auth(resolvers)
+        }
     }
 }
 

@@ -13,6 +13,7 @@ a compact statusline for shell prompts, or filterable JSON.
 | **Claude** (Max/Pro subscription or API key) | Multi-profile `~/.claude` + `~/.claude-*` (symlink-deduped) → opencode / pi → `ANTHROPIC_API_KEY` | `GET /api/oauth/usage` on `api.anthropic.com` |
 | **Codex** / ChatGPT subscription | Multi-profile `~/.codex` + `~/.codex-*` → opencode / pi → `OPENAI_API_KEY` | `GET /backend-api/wham/usage` on `chatgpt.com` |
 | **MiniMax** Token Plan | `MINIMAX_API_KEY` → `~/.minimax` | `GET /v1/api/openplatform/coding_plan/remains` on `api.minimax.io` |
+| **MiMo** (Xiaomi Token Plan / PAYG) | `~/.config/mimo/cookie` (platform session) → `XIAOMI_MIMO_API_KEY` / `MIMO_API_KEY` → `~/.local/share/mimocode/auth.json` (MiMo Code CLI) | `GET /api/v1/tokenPlan/usage` on `platform.xiaomimimo.com` (cookie) — bearer keys get a dashboard-link card |
 | **Antigravity** (agy / Google Code Assist) | Antigravity OAuth (`~/.gemini/antigravity-cli/…`) → Gemini CLI oauth → `GEMINI_API_KEY` | `POST /v1internal:retrieveUserQuotaSummary` (2 groups × 5h+7d) |
 | **Kimi** (Coding Plan + PAYG) | `MOONSHOT_API_KEY` / `KIMI_API_KEY` | `GET /coding/v1/usages` and `/v1/users/me/balance` |
 | **Z.ai / GLM** Coding Plan | `ZHIPU_API_KEY` / `ZAI_API_KEY` → `~/.api-zai` | `GET /api/monitor/usage/quota/limit` on `api.z.ai` |

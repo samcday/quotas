@@ -14,6 +14,7 @@ pub enum OpencodeSlot {
     Kimi,
     Zai,
     GitHubCopilot,
+    Xiaomi,
 }
 
 impl OpencodeSlot {
@@ -25,6 +26,7 @@ impl OpencodeSlot {
             OpencodeSlot::Kimi => "kimi-for-coding",
             OpencodeSlot::Zai => "zai-coding-plan",
             OpencodeSlot::GitHubCopilot => "github-copilot",
+            OpencodeSlot::Xiaomi => "xiaomi",
         }
     }
 }
@@ -63,6 +65,13 @@ impl OpencodeAuthResolver {
             file_paths: paths,
             slot,
         }
+    }
+
+    /// Resolver over an explicit list of auth files, in priority order.
+    /// Used for opencode-shaped files written by other CLIs (e.g. the
+    /// MiMo Code CLI at `~/.local/share/mimocode/auth.json`).
+    pub fn with_paths(slot: OpencodeSlot, file_paths: Vec<PathBuf>) -> Self {
+        Self { slot, file_paths }
     }
 }
 
@@ -186,6 +195,23 @@ mod tests {
         let parsed: OpencodeEntry = serde_json::from_value(entry).unwrap();
         match parsed {
             OpencodeEntry::Api { key, .. } => assert_eq!(key, "sk-cp-abc"),
+            _ => panic!("expected api"),
+        }
+    }
+
+    #[test]
+    fn xiaomi_slot_key_is_xiaomi() {
+        assert_eq!(OpencodeSlot::Xiaomi.key(), "xiaomi");
+    }
+
+    #[test]
+    fn parses_mimocode_api_entry() {
+        let json = r#"{"xiaomi":{"type":"api","key":"tp-abc"}}"#;
+        let v: serde_json::Value = serde_json::from_str(json).unwrap();
+        let entry = v.get("xiaomi").unwrap().clone();
+        let parsed: OpencodeEntry = serde_json::from_value(entry).unwrap();
+        match parsed {
+            OpencodeEntry::Api { key, .. } => assert_eq!(key, "tp-abc"),
             _ => panic!("expected api"),
         }
     }

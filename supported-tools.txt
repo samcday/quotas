@@ -11,6 +11,7 @@
 [x] Claude Code (custom)    $CLAUDE_CONFIG_DIR/.credentials.json     -> claude
 [x] Codex / ChatGPT CLI     ~/.codex/auth.json                       -> codex
 [x] Kimi CLI                ~/.kimi/credentials/kimi-code.json       -> kimi
+[x] MiMo Code CLI           ~/.local/share/mimocode/auth.json        -> mimo
 [x] opencode                ~/.local/share/opencode/auth.json        -> claude, codex, minimax, kimi, zai
 [x] opencode (XDG)          $XDG_DATA_HOME/opencode/auth.json        -> claude, codex, minimax, kimi, zai
 [x] opencode (config dir)   ~/.config/opencode/auth.json             -> claude, codex, minimax, kimi, zai

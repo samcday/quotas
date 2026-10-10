@@ -99,7 +99,7 @@ impl ProviderKind {
             ProviderKind::OpenRouter,
             ProviderKind::SiliconFlow,
             ProviderKind::Zai,
-            // ProviderKind::Mimo, // disabled — platform API requires browser cookie auth
+            ProviderKind::Mimo,
         ]
     }
 }
